@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Timeline Visualization</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.4.0/dist/leaflet.css"
+              integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
+              crossorigin=""/>
+        <style>
+            html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+            }
+
+            #map {
+                width: 100%;
+                height: 100%;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="map"></div>
+        <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet-src.js" crossorigin=""></script>
+        <script src="https://cdn.jsdelivr.net/npm/leaflet.polyline.snakeanim@0.2.0/L.Polyline.SnakeAnim.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.24.0/moment.js"></script>
+        <script src="https://d3js.org/d3.v4.js"></script>
+        <script>
+            // Initialize the map
+            // I like to fitWorld first, then fitBounds when I load data below.
+            // Alternative is setting the map around a certain point and zoom
+            var map = L.map('map').fitWorld();
+
+            // 2 Tile Layers, 1 pretty and 1 detailed
+            var cartoURLScheme = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+            var cartoAttribution = "Map by <a href=\"https://carto.com\">Carto</a> with OpenStreetMap data.";
+            var cartoTileLayer = L.tileLayer(cartoURLScheme, {attribution: cartoAttribution, opacity: 0.7})
+                .addTo(map);
+
+            var osmURLScheme = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+            var osmAttribution = 'Map data © <a href="https://openstreetmap.org">OpenStreetMap</a> contributors';
+            var osmTileLayer = L.tileLayer(osmURLScheme, {attribution: osmAttribution, opacity: 0.7});
+
+            var baseLayerOptions = {"Carto": cartoTileLayer, "OpenStreetMap": osmTileLayer};
+
+            // Super handy control box. Big fan of these.
+            // We'll be adding the data to this box later as overlay options.
+            var layerControl = L.control.layers(baseLayerOptions).addTo(map);
+
+            // Data Manipulation Functions
+
+            // Group datapoints by ID
+            function groupAndSortDataPoints(data){
+
+                function reducer(acc, cur){
+                    var currentGroup = acc[cur["id"]] || []; // find the current point's ID's group or create an empty group
+                    currentGroup.push(cur); // add the current point to that group
+                    acc[cur["id"]] = currentGroup; // push the changes
+                    return acc
+                }
+                var groupedData = data.reduce(reducer, {});
+
+                // Sort each group by each point's timestamp
+                for (key in groupedData) {
+                    if(groupedData.hasOwnProperty(key)) {
+                        groupedData[key].sort(function(d){ return d.timestamp.valueOf()})
+                    }
+                }
+
+                return groupedData;
+            }
+
+            function parseRows(row){
+                var id = row["id"];
+                var timestamp = moment(row["timestamp"]);
+                var latitude = +row["latitude"];
+                var longitude = +row["longitude"];
+                // Extra data fields used for the tooltip infoboxes
+                var vendorCode = row["vendor_code"];
+                var fareAmount = +row["fare_amount"];
+
+                return {
+                    id: id,
+                    timestamp: timestamp,
+                    latLng: L.latLng(latitude, longitude),
+                    vendorCode: vendorCode,
+                    fareAmount: fareAmount
+                };
+            }
+
+            d3.csv("data.csv", parseRows, function(error, data){
+                if (error) throw error;
+
+                // Create the groups
+                var groupedDataPoints = groupAndSortDataPoints(data);
+
+                // Create the color scheme
+                var colorScheme = d3.scaleOrdinal(d3.schemeCategory10)
+                    .domain(Object.keys(groupedDataPoints));
+
+                // Assemble the geographic features
+                var waypointMarkers = [];
+                var groupedPolylines = {};
+                for (key in groupedDataPoints){
+                    if(groupedDataPoints.hasOwnProperty(key)) {
+                        var group = groupedDataPoints[key];
+
+                        // create waypoint markers
+                        group.forEach(function(d){
+                            var marker = L.marker(d.latLng);
+                            waypointMarkers.push(marker)
+                        });
+
+                        groupedPolylines[key] = L.polyline(group.map(function(d){ return d.latLng }),
+                            {color: colorScheme(key)})
+                    }
+                }
+
+                // Set the map zoom to the right area
+                map.fitBounds(waypointMarkers.map(function(d){ return d._latlng}));
+
+                // Then add the geographic features to the map and control panel
+                // First the waypoints
+                var waypointFeatureGroup = L.featureGroup(waypointMarkers);
+                waypointFeatureGroup.addTo(map);
+                layerControl.addOverlay(waypointFeatureGroup, "Waypoints");
+
+                // Then the polylines
+                for (key in groupedPolylines){
+                    if (groupedPolylines.hasOwnProperty(key)) {
+                        var polyline = groupedPolylines[key];
+                        polyline.addTo(map).snakeIn();
+                        layerControl.addOverlay(polyline, key)
+                    }
+                }
+            })
+
+        </script>
+    </body>
+</html>
