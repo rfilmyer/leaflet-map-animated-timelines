@@ -10,6 +10,10 @@ For sample data I'm using an extract of [New York City's taxicab data](https://w
 ## Compatibility and Dependencies
 This code should conceptually be compatible with everything as far back as IE 11 (thus, why I'm using d3.js v4 for the data munging).
 
+## Next Steps
+* Restyle the marker icons
+* Add popup infoboxes for points (and lines?)
+
 ## Licensing
 My explicit intention is that this code can be easily used and reused, even in a commercial setting. 
 I'm using an MIT license as the least restrictive and most legally rigorous license I know. 
